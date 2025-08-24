@@ -1,0 +1,7 @@
+gradio>=4.0
+piano_transcription_inference
+librosa==0.9.2
+soundfile
+audioread
+numpy<2
+torch
