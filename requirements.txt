@@ -5,3 +5,5 @@ soundfile
 audioread
 numpy<2
 torch
+music21
+pretty_midi

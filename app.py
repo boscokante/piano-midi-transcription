@@ -117,6 +117,8 @@ def get_transcriptor():
 # IMPORTANT: piano_transcription_inference expects librosa/soundfile installed.
 # The package will download model weights on first use (checkpoint_path=None).
 from piano_transcription_inference import sample_rate, load_audio
+import json
+from music21 import converter
 
 def transcribe_file(audio_path):
     """
@@ -142,8 +144,80 @@ def transcribe_file(audio_path):
 
     return out_path
 
+def midi_to_musicxml_str(midi_path):
+    """
+    Convert midi -> MusicXML string using music21.
+    This is synchronous and returns the MusicXML as a text string.
+    """
+    try:
+        score = converter.parse(midi_path)  # parse midi into music21 stream
+        tmp_xml = tempfile.NamedTemporaryFile(delete=False, suffix=".musicxml")
+        tmp_xml.close()
+        # write MusicXML
+        score.write('musicxml', fp=tmp_xml.name)
+        with open(tmp_xml.name, 'r', encoding='utf-8') as f:
+            xml_text = f.read()
+        os.unlink(tmp_xml.name)
+        return xml_text
+    except Exception as e:
+        raise RuntimeError(f"music21 conversion failed: {e}")
+
+def build_osmd_html(musicxml_text):
+    """
+    Build an HTML page fragment that loads OSMD from CDN and renders the MusicXML.
+    We embed the xml as a JS string safely using json.dumps to escape it.
+    """
+    xml_js = json.dumps(musicxml_text)
+    html = f"""
+    <div id="osmd_container"></div>
+    <div id="osmd_status" style="font-size:0.9em; color: #666; margin-top:6px;">Loading score…</div>
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.2.1/build/opensheetmusicdisplay.min.js"></script>
+    <script>
+    (async () => {{
+      try {{
+        const xmlText = {xml_js};
+        const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd_container", {{
+          drawingParameters: "compact", // 'compact' or 'default'
+          followCursor: false,
+          drawTitle: true
+        }});
+        await osmd.load(xmlText);
+        osmd.render();
+        document.getElementById("osmd_status").innerText = "Rendered";
+      }} catch (err) {{
+        document.getElementById("osmd_status").innerText = "Error rendering score: " + err;
+        console.error(err);
+      }}
+    }})();
+    </script>
+    <style>
+      #osmd_container svg {{ max-width: 100%; height: auto; }}
+    </style>
+    """
+    return html
+
+def transcribe_and_show_score(audio_path):
+    """
+    Transcribe audio to MIDI and convert to score display.
+    Returns: (midi_file_path, score_html)
+    """
+    if not audio_path:
+        raise gr.Error("No file provided")
+    
+    # Transcribe to MIDI
+    midi_path = transcribe_file(audio_path)
+    
+    # Convert to MusicXML and create score display
+    try:
+        xml_text = midi_to_musicxml_str(midi_path)
+        html = build_osmd_html(xml_text)
+    except Exception as e:
+        html = f"<div style='color:red'>Error converting MIDI to score: {e}</div>"
+    
+    return midi_path, html
+
 description = """
-Upload a piano recording (mp3, wav, m4a, flac, ogg). The model transcribes it to a downloadable **MIDI (.mid)** file.
+Upload a piano recording (mp3, wav, m4a, flac, ogg). The model transcribes it to a downloadable **MIDI (.mid)** file and displays the musical score.
 Tip: shorter clips (1–3 minutes) are much faster! The first run will download model weights.
 """
 
@@ -151,16 +225,19 @@ def create_demo():
     with gr.Blocks(title="Piano → MIDI", css="""
         body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
     """) as demo:
-        gr.Markdown("# 🎹 Piano → MIDI Transcription")
+        gr.Markdown("# 🎹 Piano → MIDI → Score")
         gr.Markdown(description)
 
         with gr.Row():
             audio_in = gr.Audio(sources=["upload"], type="filepath", label="Upload audio (mp3/wav/m4a/flac/ogg)")
-            btn = gr.Button("Transcribe", variant="primary")
+            btn = gr.Button("Transcribe & Show Score", variant="primary")
 
-        midi_out = gr.File(label="Download MIDI")
+        with gr.Row():
+            midi_out = gr.File(label="Download MIDI")
+        
+        score_html = gr.HTML("<i>Score will appear here after transcription.</i>")
 
-        btn.click(fn=transcribe_file, inputs=audio_in, outputs=midi_out)
+        btn.click(fn=transcribe_and_show_score, inputs=audio_in, outputs=[midi_out, score_html])
 
         gr.Markdown(
             "Notes: ffmpeg must be available on the system for some audio formats. "
