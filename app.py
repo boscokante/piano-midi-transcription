@@ -182,15 +182,9 @@ def build_osmd_html(musicxml_text):
     <div id="osmd_container"></div>
     <div id="osmd_status" style="font-size:0.9em; color: #666; margin-top:6px;">Loading score…</div>
     
-    <!-- Fallback: Show MusicXML as downloadable file -->
     <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
-      <strong>MusicXML Score:</strong> 
-      <a href="data:text/xml;charset=utf-8,{musicxml_text.replace('"', '&quot;')}" 
-         download="score.musicxml" 
-         style="color: #007bff; text-decoration: none;">
-        Download MusicXML file
-      </a>
-      <br><small>You can open this file in music notation software like MuseScore, Finale, or Sibelius.</small>
+      <strong>Score Display:</strong> 
+      <br><small>If the score doesn't render, download the MusicXML file above and open it in MuseScore, Finale, or Sibelius.</small>
     </div>
     
     <script>
@@ -247,7 +241,7 @@ def build_osmd_html(musicxml_text):
 def transcribe_and_show_score(audio_path):
     """
     Transcribe audio to MIDI and convert to score display.
-    Returns: (midi_file_path, score_html)
+    Returns: (midi_file_path, score_html, musicxml_file_path)
     """
     if not audio_path:
         raise gr.Error("No file provided")
@@ -260,6 +254,17 @@ def transcribe_and_show_score(audio_path):
         print(f"Converting MIDI to MusicXML: {midi_path}")
         xml_text = midi_to_musicxml_str(midi_path)
         print(f"MusicXML conversion successful, length: {len(xml_text)}")
+        
+        # Save MusicXML to file
+        base = os.path.splitext(os.path.basename(audio_path))[0]
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        tests_dir = os.path.join(root_dir, "tests")
+        os.makedirs(tests_dir, exist_ok=True)
+        musicxml_path = os.path.join(tests_dir, f"{base}.musicxml")
+        
+        with open(musicxml_path, 'w', encoding='utf-8') as f:
+            f.write(xml_text)
+        print(f"MusicXML saved to: {musicxml_path}")
         
         # Add basic score info
         score = converter.parse(midi_path)
@@ -275,8 +280,9 @@ def transcribe_and_show_score(audio_path):
     except Exception as e:
         print(f"Error in score conversion: {e}")
         html = f"<div style='color:red'>Error converting MIDI to score: {e}</div>"
+        musicxml_path = None
     
-    return midi_path, html
+    return midi_path, html, musicxml_path
 
 description = """
 Upload a piano recording (mp3, wav, m4a, flac, ogg). The model transcribes it to a downloadable **MIDI (.mid)** file and displays the musical score.
@@ -296,10 +302,11 @@ def create_demo():
 
         with gr.Row():
             midi_out = gr.File(label="Download MIDI")
+            musicxml_out = gr.File(label="Download MusicXML")
         
         score_html = gr.HTML("<i>Score will appear here after transcription.</i>")
 
-        btn.click(fn=transcribe_and_show_score, inputs=audio_in, outputs=[midi_out, score_html])
+        btn.click(fn=transcribe_and_show_score, inputs=audio_in, outputs=[midi_out, score_html, musicxml_out])
 
         gr.Markdown(
             "Notes: ffmpeg must be available on the system for some audio formats. "
