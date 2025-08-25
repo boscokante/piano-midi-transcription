@@ -150,16 +150,25 @@ def midi_to_musicxml_str(midi_path):
     This is synchronous and returns the MusicXML as a text string.
     """
     try:
+        print(f"music21: parsing MIDI file {midi_path}")
         score = converter.parse(midi_path)  # parse midi into music21 stream
+        print(f"music21: parsed successfully, parts: {len(score.parts)}")
+        
         tmp_xml = tempfile.NamedTemporaryFile(delete=False, suffix=".musicxml")
         tmp_xml.close()
+        print(f"music21: writing to temp file {tmp_xml.name}")
+        
         # write MusicXML
         score.write('musicxml', fp=tmp_xml.name)
+        print("music21: MusicXML written successfully")
+        
         with open(tmp_xml.name, 'r', encoding='utf-8') as f:
             xml_text = f.read()
         os.unlink(tmp_xml.name)
+        print(f"music21: read {len(xml_text)} characters of MusicXML")
         return xml_text
     except Exception as e:
+        print(f"music21 error: {e}")
         raise RuntimeError(f"music21 conversion failed: {e}")
 
 def build_osmd_html(musicxml_text):
@@ -209,9 +218,13 @@ def transcribe_and_show_score(audio_path):
     
     # Convert to MusicXML and create score display
     try:
+        print(f"Converting MIDI to MusicXML: {midi_path}")
         xml_text = midi_to_musicxml_str(midi_path)
+        print(f"MusicXML conversion successful, length: {len(xml_text)}")
         html = build_osmd_html(xml_text)
+        print("OSMD HTML generated successfully")
     except Exception as e:
+        print(f"Error in score conversion: {e}")
         html = f"<div style='color:red'>Error converting MIDI to score: {e}</div>"
     
     return midi_path, html
