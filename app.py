@@ -120,6 +120,7 @@ def get_transcriptor():
 from piano_transcription_inference import sample_rate, load_audio
 import json
 from music21 import converter
+import pretty_midi
 
 def transcribe_file(audio_path):
     """
@@ -144,6 +145,58 @@ def transcribe_file(audio_path):
     transcriptor.transcribe(audio, out_path)
 
     return out_path
+
+def make_notation_friendly_midi(
+    midi_path: str,
+    min_duration_seconds: float = 0.08,
+    merge_gap_seconds: float = 0.02,
+) -> str:
+    """
+    Post-process the transcribed MIDI to make it friendlier for MusicXML/engraving:
+    - Remove very short note fragments (< min_duration_seconds)
+    - Merge back-to-back same-pitch notes separated by tiny gaps (< merge_gap_seconds)
+    - Strip sustain/soft pedal CCs and pitch bends to avoid duplication artifacts
+    Returns path to a cleaned MIDI alongside the original ("*_clean.mid").
+    """
+    pm = pretty_midi.PrettyMIDI(midi_path)
+
+    for instrument in pm.instruments:
+        # Remove sustain (CC64) and soft pedal (CC67), and pitch bends
+        instrument.control_changes = [
+            cc for cc in instrument.control_changes if cc.number not in (64, 67)
+        ]
+        instrument.pitch_bends = []
+
+        # Sort notes by (pitch, start)
+        instrument.notes.sort(key=lambda n: (n.pitch, n.start))
+
+        cleaned_notes = []
+        last_note_by_pitch = {}
+
+        for note in instrument.notes:
+            duration = note.end - note.start
+            if duration < min_duration_seconds:
+                # Drop micro-fragments that tend to create extra stubs in notation
+                continue
+
+            prev = last_note_by_pitch.get(note.pitch)
+            if prev is not None and (note.start - prev.end) <= merge_gap_seconds:
+                # Extend previous note to cover this note; avoid repeated ties
+                prev.end = max(prev.end, note.end)
+            else:
+                cleaned_notes.append(note)
+                last_note_by_pitch[note.pitch] = note
+
+        # Ensure resulting notes are strictly non-negative duration
+        instrument.notes = [
+            n for n in cleaned_notes if (n.end - n.start) > 1e-6
+        ]
+
+    cleaned_path = (
+        midi_path[:-4] + "_clean.mid" if midi_path.lower().endswith(".mid") else midi_path + "_clean.mid"
+    )
+    pm.write(cleaned_path)
+    return cleaned_path
 
 def midi_to_musicxml_str(midi_path):
     """
@@ -279,8 +332,9 @@ def transcribe_and_show_score(audio_path):
     if not audio_path:
         raise gr.Error("No file provided")
     
-    # Transcribe to MIDI
+    # Transcribe to MIDI and then clean for notation friendliness
     midi_path = transcribe_file(audio_path)
+    midi_path = make_notation_friendly_midi(midi_path)
     
     # Convert to MusicXML and create score display
     try:
