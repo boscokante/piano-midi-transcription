@@ -181,10 +181,28 @@ def build_osmd_html(musicxml_text):
     html = f"""
     <div id="osmd_container"></div>
     <div id="osmd_status" style="font-size:0.9em; color: #666; margin-top:6px;">Loading score…</div>
-    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.2.1/build/opensheetmusicdisplay.min.js"></script>
+    
+    <!-- Fallback: Show MusicXML as downloadable file -->
+    <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
+      <strong>MusicXML Score:</strong> 
+      <a href="data:text/xml;charset=utf-8,{musicxml_text.replace('"', '&quot;')}" 
+         download="score.musicxml" 
+         style="color: #007bff; text-decoration: none;">
+        Download MusicXML file
+      </a>
+      <br><small>You can open this file in music notation software like MuseScore, Finale, or Sibelius.</small>
+    </div>
+    
     <script>
+    // Try to load OSMD with better error handling
     (async () => {{
       try {{
+        // Check if OSMD library loaded
+        if (typeof opensheetmusicdisplay === 'undefined') {{
+          document.getElementById("osmd_status").innerText = "OSMD library failed to load - MusicXML download available above";
+          return;
+        }}
+        
         const xmlText = {xml_js};
         console.log("Loading OSMD with XML length:", xmlText.length);
         
@@ -198,8 +216,8 @@ def build_osmd_html(musicxml_text):
         
         // Add timeout
         const timeout = setTimeout(() => {{
-          document.getElementById("osmd_status").innerText = "Rendering timeout - score may be too complex";
-        }}, 30000);
+          document.getElementById("osmd_status").innerText = "Rendering timeout - MusicXML download available above";
+        }}, 15000);
         
         await osmd.load(xmlText);
         clearTimeout(timeout);
@@ -209,12 +227,16 @@ def build_osmd_html(musicxml_text):
         document.getElementById("osmd_status").innerText = "Score rendered successfully";
       }} catch (err) {{
         console.error("OSMD error:", err);
-        document.getElementById("osmd_status").innerText = "Error rendering score: " + err.message;
-        document.getElementById("osmd_container").innerHTML = 
-          "<div style='color:red; padding:10px;'>Score rendering failed. The MIDI file was created successfully.</div>";
+        document.getElementById("osmd_status").innerText = "Score rendering failed - MusicXML download available above";
       }}
     }})();
     </script>
+    
+    <!-- Load OSMD library -->
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.2.1/build/opensheetmusicdisplay.min.js" 
+            onerror="document.getElementById('osmd_status').innerText='OSMD library failed to load - MusicXML download available above';">
+    </script>
+    
     <style>
       #osmd_container svg {{ max-width: 100%; height: auto; }}
       #osmd_container {{ min-height: 100px; }}
