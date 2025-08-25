@@ -1,5 +1,6 @@
 # app.py created by Bosco Kante
 import os
+import tempfile
 import gradio as gr
 import torch
 
