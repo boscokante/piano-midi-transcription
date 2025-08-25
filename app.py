@@ -155,12 +155,45 @@ def midi_to_musicxml_str(midi_path):
         score = converter.parse(midi_path)  # parse midi into music21 stream
         print(f"music21: parsed successfully, parts: {len(score.parts)}")
         
+        # Clean up the score to make it more compatible with MuseScore
+        for part in score.parts:
+            # Remove any problematic elements that might crash MuseScore
+            for element in part.recurse():
+                if hasattr(element, 'volume'):
+                    element.volume = None
+                if hasattr(element, 'velocity'):
+                    element.velocity = None
+                if hasattr(element, 'pan'):
+                    element.pan = None
+                # Remove any dynamic markings that might be problematic
+                if hasattr(element, 'dynamic'):
+                    element.dynamic = None
+        
+        # Set a default tempo if none exists
+        if not score.metronomeMarkBoundaries():
+            from music21.tempo import MetronomeMark
+            mm = MetronomeMark(number=120)
+            score.insert(0, mm)
+        
+        # Add a default time signature if none exists
+        if not score.timeSignatures():
+            from music21.meter import TimeSignature
+            ts = TimeSignature('4/4')
+            score.insert(0, ts)
+        
+        # Quantize the score to make it more readable
+        try:
+            score = score.quantize()
+            print("music21: score quantized successfully")
+        except Exception as e:
+            print(f"music21: quantization failed, continuing: {e}")
+        
         tmp_xml = tempfile.NamedTemporaryFile(delete=False, suffix=".musicxml")
         tmp_xml.close()
         print(f"music21: writing to temp file {tmp_xml.name}")
         
-        # write MusicXML
-        score.write('musicxml', fp=tmp_xml.name)
+        # write MusicXML with conservative settings
+        score.write('musicxml', fp=tmp_xml.name, makeNotation=True)
         print("music21: MusicXML written successfully")
         
         with open(tmp_xml.name, 'r', encoding='utf-8') as f:
@@ -279,7 +312,12 @@ def transcribe_and_show_score(audio_path):
         print("OSMD HTML generated successfully")
     except Exception as e:
         print(f"Error in score conversion: {e}")
-        html = f"<div style='color:red'>Error converting MIDI to score: {e}</div>"
+        html = f"""
+        <div style='color:orange; padding: 10px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffeaa7;'>
+          <strong>Score conversion failed:</strong> {e}<br>
+          <small>The MIDI file was created successfully and can be opened in any MIDI-compatible software.</small>
+        </div>
+        """
         musicxml_path = None
     
     return midi_path, html, musicxml_path
