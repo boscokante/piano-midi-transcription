@@ -186,22 +186,38 @@ def build_osmd_html(musicxml_text):
     (async () => {{
       try {{
         const xmlText = {xml_js};
+        console.log("Loading OSMD with XML length:", xmlText.length);
+        
         const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd_container", {{
-          drawingParameters: "compact", // 'compact' or 'default'
+          drawingParameters: "compact",
           followCursor: false,
-          drawTitle: true
+          drawTitle: true,
+          autoBeam: false,
+          autoStem: false
         }});
+        
+        // Add timeout
+        const timeout = setTimeout(() => {{
+          document.getElementById("osmd_status").innerText = "Rendering timeout - score may be too complex";
+        }}, 30000);
+        
         await osmd.load(xmlText);
+        clearTimeout(timeout);
+        
+        console.log("OSMD loaded, rendering...");
         osmd.render();
-        document.getElementById("osmd_status").innerText = "Rendered";
+        document.getElementById("osmd_status").innerText = "Score rendered successfully";
       }} catch (err) {{
-        document.getElementById("osmd_status").innerText = "Error rendering score: " + err;
-        console.error(err);
+        console.error("OSMD error:", err);
+        document.getElementById("osmd_status").innerText = "Error rendering score: " + err.message;
+        document.getElementById("osmd_container").innerHTML = 
+          "<div style='color:red; padding:10px;'>Score rendering failed. The MIDI file was created successfully.</div>";
       }}
     }})();
     </script>
     <style>
       #osmd_container svg {{ max-width: 100%; height: auto; }}
+      #osmd_container {{ min-height: 100px; }}
     </style>
     """
     return html
@@ -222,7 +238,17 @@ def transcribe_and_show_score(audio_path):
         print(f"Converting MIDI to MusicXML: {midi_path}")
         xml_text = midi_to_musicxml_str(midi_path)
         print(f"MusicXML conversion successful, length: {len(xml_text)}")
-        html = build_osmd_html(xml_text)
+        
+        # Add basic score info
+        score = converter.parse(midi_path)
+        duration = score.duration.quarterLength
+        parts = len(score.parts)
+        html = f"""
+        <div style='margin-bottom: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;'>
+          <strong>Score Info:</strong> {parts} part(s), duration: {duration:.1f} beats
+        </div>
+        """
+        html += build_osmd_html(xml_text)
         print("OSMD HTML generated successfully")
     except Exception as e:
         print(f"Error in score conversion: {e}")
