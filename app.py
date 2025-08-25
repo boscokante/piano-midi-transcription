@@ -144,7 +144,7 @@ def transcribe_file(audio_path):
 
 description = """
 Upload a piano recording (mp3, wav, m4a, flac, ogg). The model transcribes it to a downloadable **MIDI (.mid)** file.
-Tip: shorter clips (1–3 minutes) are much faster. The first run will download model weights.
+Tip: shorter clips (1–3 minutes) are much faster! The first run will download model weights.
 """
 
 def create_demo():
